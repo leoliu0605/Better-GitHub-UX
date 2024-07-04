@@ -1,0 +1,11 @@
+{
+  "name": "github-repository-manager",
+  "version": "1.0.0",
+  "description": "Chrome extension to manage GitHub repositories",
+  "scripts": {
+    "generate-icons": "node convert-icons.js"
+  },
+  "dependencies": {
+    "sharp": "^0.32.6"
+  }
+} 

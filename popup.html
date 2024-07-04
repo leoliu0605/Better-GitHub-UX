@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Better GitHub UX</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div id="login-section" class="section">
+      <h2>Better GitHub UX</h2>
+      <p class="description">Connect your GitHub account to manage your repositories and stars.</p>
+      <button id="login-button" class="github-button">
+        <svg class="github-icon" viewBox="0 0 24 24" width="24" height="24">
+          <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+        </svg>
+        Connect with GitHub
+      </button>
+    </div>
+
+    <div id="user-section" class="section hidden">
+      <div class="user-info">
+        <img id="user-avatar" src="" alt="User avatar">
+        <div class="user-details">
+          <h3 id="username">Loading...</h3>
+          <div id="user-stats" class="user-stats">
+            <span>Loading stats...</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 分類管理選項 -->
+      <div class="category-manager">
+        <div class="category-manager-top">
+          <button id="manage-categories-button" class="secondary-button icon-only" title="管理分類"><i class="fas fa-tags"></i></button>
+          <button id="sync-categories-button" class="secondary-button icon-only" title="同步到 GitHub"><i class="fas fa-sync-alt"></i></button>
+          <div id="sync-indicator" class="sync-status not-synced">未同步</div>
+        </div>
+        <div id="categories-dropdown" class="hidden">
+          <div class="categories-list" id="categories-list">
+            <!-- 分類列表將在這裡動態生成 -->
+          </div>
+          <div class="add-category">
+            <input type="text" id="new-category-input" placeholder="新增分類名稱...">
+            <button id="add-category-button"><i class="fas fa-plus"></i></button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 分類篩選 -->
+      <div class="category-filter">
+        <select id="category-filter-select">
+          <option value="all">全部項目</option>
+          <!-- 分類選項將在這裡動態生成 -->
+        </select>
+      </div>
+      
+      <div class="tabs">
+        <button class="tab-button active" data-tab="repos">Repositories</button>
+        <button class="tab-button" data-tab="stars">Stars</button>
+      </div>
+      <div class="content">
+        <div id="repos-content" class="tab-content active">
+          <div id="repos-list" class="list-container">
+            <div class="loading">Loading repositories...</div>
+          </div>
+        </div>
+        <div id="stars-content" class="tab-content">
+          <div id="stars-list" class="list-container">
+            <div class="loading">Loading stars...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 分類對話框 -->
+    <div id="category-dialog" class="dialog">
+      <div class="dialog-content">
+        <h3>管理分類</h3>
+        <div class="dialog-description">您可以在此添加、刪除和管理分類</div>
+        
+        <div class="add-category-section">
+          <input type="text" id="new-category-input" placeholder="輸入新分類名稱..." class="category-input">
+          <button id="add-category-button" class="primary-button" title="新增分類"><i class="fas fa-plus"></i></button>
+        </div>
+        
+        <div class="categories-list-wrapper">
+          <h4>現有分類</h4>
+          <ul id="categories-list" class="categories-list">
+            <!-- 分類列表將在這裡動態生成 -->
+          </ul>
+          <div class="empty-categories" id="empty-categories" style="display: none;">
+            您還沒有建立任何分類。使用上方的輸入框來添加您的第一個分類。
+          </div>
+        </div>
+        
+        <div class="dialog-actions">
+          <button id="save-categories-button" class="primary-button" title="儲存"><i class="fas fa-save"></i> 儲存</button>
+          <button id="cancel-categories-button" class="secondary-button" title="取消"><i class="fas fa-times"></i> 取消</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 項目分類對話框 -->
+    <div id="item-category-dialog" class="dialog">
+      <div class="dialog-content">
+        <h3 id="item-category-title">設置項目分類</h3>
+        <div class="item-category-description">勾選要應用的分類，或者新增一個分類</div>
+        
+        <div class="add-quick-category-section">
+          <input type="text" id="new-quick-category-input" placeholder="輸入新分類名稱..." class="category-input">
+          <button id="add-quick-category-button" class="secondary-button" title="新增"><i class="fas fa-plus"></i></button>
+        </div>
+        
+        <div id="item-categories-list" class="category-checkboxes"></div>
+        <div class="dialog-actions">
+          <button id="save-item-categories-button" class="primary-button" title="儲存"><i class="fas fa-save"></i> 儲存</button>
+          <button id="cancel-item-categories-button" class="secondary-button" title="取消"><i class="fas fa-times"></i> 取消</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 提示訊息容器 -->
+    <div id="message-container" class="message-container"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner-circle"></div>
+        <div class="loading-text">Loading...</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html> 
