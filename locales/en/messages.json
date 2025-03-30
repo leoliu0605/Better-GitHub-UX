@@ -43,7 +43,7 @@
   "removedFromCategory": "Removed from category",
   "deleteConfirmation": "Are you sure you want to delete the \"{0}\" category?\nNote: All items associated with this category will lose this category tag.",
   "categoryDeleted": "Deleted \"{0}\" category",
-  "syncedToGithub": "Categories synced to GitHub",
+  "syncedToGithub": "Synced to GitHub",
   "syncToGithubFailed": "Failed to sync to GitHub",
   "createdAndSyncedToGithub": "Created and synced to GitHub",
   "createGistFailed": "Failed to create Gist",
