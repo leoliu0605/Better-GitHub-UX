@@ -1,4 +1,5 @@
 import config from './config.js';
+import { initI18n, getMessage, translatePage, createLanguageSwitcher, getCurrentLanguage } from './i18n.js';
 
 // GitHub OAuth configuration
 const CLIENT_ID = config.GITHUB_CLIENT_ID;
@@ -23,6 +24,7 @@ const CATEGORIES_GIST_DESCRIPTION = 'Better GitHub UX - Categories Data';
 let categories = []; // 分類列表，格式：[{name: '分類1', repositories: ['repoId1', 'repoId2']}]
 let itemCategories = {}; // 舊格式，僅用於兼容，將被廢棄
 let categoriesGistId = null; // 存儲分類數據的 Gist ID
+let savedLanguage = null; // 存儲用戶的語言偏好
 
 // DOM Elements
 let loginSection;
@@ -64,11 +66,53 @@ let messageContainer;
 // 載入中遮罩
 let loadingOverlay;
 
+// Language switcher container
+let languageSwitcher;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Popup loaded');
   
   initDomElements();
+  
+  // Initialize i18n before adding event listeners
+  await initI18n();
+  
+  // Translate the page
+  translatePage();
+  
+  // Create a single fixed language switcher
+  document.body.insertAdjacentHTML('beforeend', '<div id="fixed-language-switcher"></div>');
+  languageSwitcher = document.getElementById('fixed-language-switcher');
+  
+  if (languageSwitcher) {
+    createLanguageSwitcher(languageSwitcher);
+  }
+  
+  // Listen for language changes
+  window.addEventListener('languageChanged', async (e) => {
+    // Update UI text
+    translatePage();
+    
+    // Update dynamic content if necessary
+    if (currentTab === 'repos' && repositories.length > 0) {
+      displayRepositories(repositories);
+    } else if (currentTab === 'stars') {
+      loadStars();
+    }
+    
+    // Update any tooltips or placeholders
+    updateTooltipsAndPlaceholders();
+    
+    // Save the language preference to Gist
+    try {
+      await saveCategoriesToGist();
+      console.log('Language preference saved to Gist:', e.detail.language);
+    } catch (error) {
+      console.error('Error saving language preference to Gist:', error);
+    }
+  });
+  
   addEventListeners();
   
   // Initial state - show loading overlay
@@ -76,6 +120,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   await checkLoginStatus();
 });
+
+// Update tooltips and placeholders that might be set programmatically
+function updateTooltipsAndPlaceholders() {
+  // Example: update dynamic tooltips
+  if (manageCategoriesButton) {
+    manageCategoriesButton.title = getMessage('manageCategories');
+  }
+  
+  if (syncCategoriesButton) {
+    syncCategoriesButton.title = getMessage('syncToGithub');
+  }
+}
 
 // 初始化 DOM 元素
 function initDomElements() {
@@ -154,18 +210,18 @@ function addEventListeners() {
   syncCategoriesButton.addEventListener('click', async () => {
     try {
       syncCategoriesButton.disabled = true;
-      syncCategoriesButton.textContent = '同步中...';
+      syncCategoriesButton.textContent = getMessage('syncing');
       showLoading();
       await saveCategoriesToGist();
-      syncCategoriesButton.textContent = '同步到 GitHub';
+      syncCategoriesButton.textContent = getMessage('syncToGithub');
       syncCategoriesButton.disabled = false;
       hideLoading();
     } catch (error) {
       console.error('Sync error:', error);
-      syncCategoriesButton.textContent = '同步失敗';
+      syncCategoriesButton.textContent = getMessage('syncFailed');
       hideLoading();
       setTimeout(() => {
-        syncCategoriesButton.textContent = '同步到 GitHub';
+        syncCategoriesButton.textContent = getMessage('syncToGithub');
         syncCategoriesButton.disabled = false;
       }, 3000);
     }
@@ -353,6 +409,20 @@ async function loadUserData() {
     // 載入分類數據
     await loadCategoriesData();
     
+    // 如果從 Gist 加載了語言設定，重新初始化 i18n
+    if (savedLanguage) {
+      console.log('Re-initializing i18n with language from Gist:', savedLanguage);
+      await initI18n(savedLanguage);
+      
+      // 刷新語言選擇器的選中狀態
+      document.querySelectorAll('.language-option').forEach(option => {
+        option.classList.toggle('active', option.dataset.langCode === savedLanguage);
+      });
+      
+      // 重新翻譯頁面
+      translatePage();
+    }
+    
     // 載入倉庫和星標
     await loadReposAndStats();
     
@@ -455,7 +525,7 @@ function displayRepositories(repos) {
   reposList.innerHTML = '';
   
   if (!repos || repos.length === 0) {
-    reposList.innerHTML = '<div class="empty-state">No repositories found</div>';
+    reposList.innerHTML = `<div class="empty-state">${getMessage('noRepositoriesFound')}</div>`;
     console.log('No repositories to display');
     return;
   }
@@ -473,25 +543,25 @@ function displayRepositories(repos) {
         ${repo.name}
         <span class="repo-owner">${repo.owner.login === username.textContent ? '' : `(${repo.owner.login})`}</span>
       </h4>
-      <p>${repo.description || 'No description'}</p>
+      <p>${repo.description || getMessage('noDescription')}</p>
       <div class="repo-meta">
         <span>⭐ ${repo.stargazers_count}</span>
         <span>🔀 ${repo.forks_count}</span>
-        <span>${repo.private ? '🔒 Private' : '🌐 Public'}</span>
+        <span>${repo.private ? '🔒 ' + getMessage('private') : '🌐 ' + getMessage('public')}</span>
       </div>
       <div class="category-badges"></div>
       <div class="item-actions">
         <div class="dropdown">
-          <button class="category-btn dropdown-toggle" title="分類選項">
+          <button class="category-btn dropdown-toggle" title="${getMessage('manageCategories')}">
             <i class="fas fa-tag"></i>
           </button>
           <div class="dropdown-content">
-            <a class="dropdown-item set-categories-action">設置分類</a>
+            <a class="dropdown-item set-categories-action">${getMessage('setCategories')}</a>
             <div class="dropdown-divider"></div>
             ${generateCategoryDropdownItems(repo.id)}
           </div>
         </div>
-        <button class="open-btn" title="在GitHub中打開"><i class="fas fa-external-link-alt"></i></button>
+        <button class="open-btn" title="${getMessage('openInGithub')}"><i class="fas fa-external-link-alt"></i></button>
       </div>
     `;
     
@@ -520,7 +590,7 @@ function displayRepositories(repos) {
     const categoryItems = repoItem.querySelectorAll('.quick-category-item');
     categoryItems.forEach(item => {
       item.addEventListener('click', (e) => {
-        const categoryId = e.target.dataset.categoryId;
+        const categoryId = e.target.dataset.categoryName;
         toggleItemCategory(repo.id, categoryId);
         dropdownContent.classList.remove('show');
       });
@@ -529,7 +599,7 @@ function displayRepositories(repos) {
     // 在GitHub中打開
     const openBtn = repoItem.querySelector('.open-btn');
     openBtn.addEventListener('click', () => {
-      window.open(repo.html_url, '_blank');
+      openInGitHub(repo.html_url);
     });
     
     reposList.appendChild(repoItem);
@@ -548,7 +618,7 @@ async function loadStars() {
     const stars = await fetchGitHubData('user/starred');
     
     if (!stars || stars.length === 0) {
-      starsList.innerHTML = '<div class="empty-state">No starred repositories found</div>';
+      starsList.innerHTML = `<div class="empty-state">${getMessage('noStarsFound')}</div>`;
       return;
     }
     
@@ -563,7 +633,7 @@ async function loadStars() {
       // 設置星標HTML
       starItem.innerHTML = `
         <h4>${star.full_name}</h4>
-        <p>${star.description || 'No description'}</p>
+        <p>${star.description || getMessage('noDescription')}</p>
         <div class="star-meta">
           <span>⭐ ${star.stargazers_count}</span>
           <span>🔀 ${star.forks_count}</span>
@@ -572,16 +642,16 @@ async function loadStars() {
         <div class="category-badges"></div>
         <div class="item-actions">
           <div class="dropdown">
-            <button class="category-btn dropdown-toggle" title="分類選項">
+            <button class="category-btn dropdown-toggle" title="${getMessage('manageCategories')}">
               <i class="fas fa-tag"></i>
             </button>
             <div class="dropdown-content">
-              <a class="dropdown-item set-categories-action">設置分類</a>
+              <a class="dropdown-item set-categories-action">${getMessage('setCategories')}</a>
               <div class="dropdown-divider"></div>
               ${generateCategoryDropdownItems(star.id)}
             </div>
           </div>
-          <button class="open-btn" title="在GitHub中打開"><i class="fas fa-external-link-alt"></i></button>
+          <button class="open-btn" title="${getMessage('openInGithub')}"><i class="fas fa-external-link-alt"></i></button>
         </div>
       `;
       
@@ -610,7 +680,7 @@ async function loadStars() {
       const categoryItems = starItem.querySelectorAll('.quick-category-item');
       categoryItems.forEach(item => {
         item.addEventListener('click', (e) => {
-          const categoryId = e.target.dataset.categoryId;
+          const categoryId = e.target.dataset.categoryName;
           toggleItemCategory(star.id, categoryId);
           dropdownContent.classList.remove('show');
         });
@@ -619,7 +689,7 @@ async function loadStars() {
       // 在GitHub中打開
       const openBtn = starItem.querySelector('.open-btn');
       openBtn.addEventListener('click', () => {
-        window.open(star.html_url, '_blank');
+        openInGitHub(star.html_url);
       });
       
       starsList.appendChild(starItem);
@@ -629,7 +699,7 @@ async function loadStars() {
     filterItemsByCategory();
   } catch (error) {
     console.error('Error loading stars:', error);
-    starsList.innerHTML = '<div class="error">Failed to load stars</div>';
+    starsList.innerHTML = `<div class="error">${getMessage('failedToLoadStars')}</div>`;
   }
 }
 
@@ -861,7 +931,7 @@ async function saveCategoriesToGist() {
     // 更新同步狀態指示器
     const syncIndicator = document.getElementById('sync-indicator');
     if (syncIndicator) {
-      syncIndicator.textContent = '同步中...';
+      syncIndicator.textContent = getMessage('syncing');
       syncIndicator.className = 'sync-status syncing';
     }
     
@@ -888,10 +958,14 @@ async function saveCategoriesToGist() {
       });
     });
     
+    // 獲取當前語言設定
+    const currentLang = getCurrentLanguage();
+    
     // 準備 Gist 內容
     const categoriesData = {
       categories: categoriesToSave,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      language: currentLang // 加入當前語言設定
     };
     
     const gistContent = JSON.stringify(categoriesData, null, 2);
@@ -976,11 +1050,11 @@ async function saveCategoriesToGist() {
     if (syncIndicator) {
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      syncIndicator.textContent = `已同步 (${timeStr})`;
+      syncIndicator.textContent = `${getMessage('syncedAt')} (${timeStr})`;
       syncIndicator.className = 'sync-status synced';
     }
     
-    showMessage('分類已同步到 GitHub', 'success');
+    showMessage('syncedToGithub', 'success');
     return true;
   } catch (error) {
     console.error('Error saving categories to Gist:', error);
@@ -988,11 +1062,11 @@ async function saveCategoriesToGist() {
     // 更新同步狀態
     const syncIndicator = document.getElementById('sync-indicator');
     if (syncIndicator) {
-      syncIndicator.textContent = '同步失敗';
+      syncIndicator.textContent = getMessage('syncFailed');
       syncIndicator.className = 'sync-status sync-error';
     }
     
-    showMessage('同步到 GitHub 失敗', 'error');
+    showMessage('syncToGithubFailed', 'error');
     return false;
   }
 }
@@ -1003,7 +1077,7 @@ async function loadCategoriesFromGist() {
     // 更新同步狀態指示器
     const syncIndicator = document.getElementById('sync-indicator');
     if (syncIndicator) {
-      syncIndicator.textContent = '載入中...';
+      syncIndicator.textContent = getMessage('loading');
       syncIndicator.className = 'sync-status syncing';
     }
     
@@ -1020,13 +1094,52 @@ async function loadCategoriesFromGist() {
         
         if (gistData && gistData.files && gistData.files[CATEGORIES_GIST_FILENAME]) {
           const content = gistData.files[CATEGORIES_GIST_FILENAME].content;
-          const parsedData = JSON.parse(content);
+          let parsedData;
           
+          try {
+            parsedData = JSON.parse(content);
+            console.log('Parsed Gist data:', parsedData);
+          } catch (parseError) {
+            console.error('Error parsing Gist JSON content:', parseError);
+            showMessage('gistFormatError', 'error');
+            return false;
+          }
+          
+          // 支持不同版本的數據格式
+          let categoriesData = [];
+          
+          // 處理不同格式的資料
           if (parsedData.categories && Array.isArray(parsedData.categories)) {
+            categoriesData = parsedData.categories;
+          } else if (Array.isArray(parsedData)) {
+            categoriesData = parsedData;
+          } else {
+            // 嘗試處理其他格式
+            console.warn('Unknown data format in found Gist, attempting to migrate');
+            
+            if (typeof parsedData === 'object') {
+              // 查找任何看起來像分類的數組
+              for (const key in parsedData) {
+                if (Array.isArray(parsedData[key])) {
+                  const possibleCategories = parsedData[key];
+                  if (possibleCategories.length > 0 && 
+                      possibleCategories[0].name && 
+                      (possibleCategories[0].repositories === undefined || 
+                       Array.isArray(possibleCategories[0].repositories))) {
+                    categoriesData = possibleCategories;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          // 如果找到了有效的分類數據
+          if (categoriesData.length > 0) {
             // 保存原始分類數據
-            categories = parsedData.categories.map(cat => ({
+            categories = categoriesData.map(cat => ({
               name: cat.name,
-              repositories: cat.repositories || []
+              repositories: Array.isArray(cat.repositories) ? cat.repositories : []
             }));
             
             // 將新格式轉換為兼容舊格式的數據
@@ -1037,36 +1150,54 @@ async function loadCategoriesFromGist() {
             categories.forEach(category => {
               if (category.repositories && Array.isArray(category.repositories)) {
                 category.repositories.forEach(repo => {
-                  const itemId = repo.id;
-                  if (!itemCategories[itemId]) {
-                    itemCategories[itemId] = [];
-                  }
-                  if (!itemCategories[itemId].includes(category.name)) {
-                    itemCategories[itemId].push(category.name);
+                  const itemId = repo.id || (repo.repoId || repo.starId);
+                  if (itemId) {
+                    if (!itemCategories[itemId]) {
+                      itemCategories[itemId] = [];
+                    }
+                    if (!itemCategories[itemId].includes(category.name)) {
+                      itemCategories[itemId].push(category.name);
+                    }
                   }
                 });
               }
             });
             
-            console.log('Categories loaded from Gist:', categories);
+            console.log('Categories loaded from found Gist:', categories);
             console.log('Item categories converted:', itemCategories);
-          }
-          
-          // 更新同步狀態
-          if (syncIndicator) {
-            if (parsedData.lastUpdated) {
-              const updateDate = new Date(parsedData.lastUpdated);
-              const timeStr = `${updateDate.getHours().toString().padStart(2, '0')}:${updateDate.getMinutes().toString().padStart(2, '0')}`;
-              const dateStr = `${updateDate.getFullYear()}-${(updateDate.getMonth() + 1).toString().padStart(2, '0')}-${updateDate.getDate().toString().padStart(2, '0')}`;
-              syncIndicator.textContent = `已同步 (${dateStr} ${timeStr})`;
-            } else {
-              syncIndicator.textContent = '已同步';
+            
+            // 處理語言設定
+            if (parsedData.language) {
+              savedLanguage = parsedData.language;
+              console.log('Language preference loaded from Gist:', savedLanguage);
             }
-            syncIndicator.className = 'sync-status synced';
+            
+            // 更新同步狀態
+            if (syncIndicator) {
+              if (parsedData.lastUpdated) {
+                const updateDate = new Date(parsedData.lastUpdated);
+                const timeStr = `${updateDate.getHours().toString().padStart(2, '0')}:${updateDate.getMinutes().toString().padStart(2, '0')}`;
+                const dateStr = `${updateDate.getFullYear()}-${(updateDate.getMonth() + 1).toString().padStart(2, '0')}-${updateDate.getDate().toString().padStart(2, '0')}`;
+                syncIndicator.textContent = `${getMessage('syncedAt')} (${dateStr} ${timeStr})`;
+              } else {
+                syncIndicator.textContent = getMessage('synced');
+              }
+              syncIndicator.className = 'sync-status synced';
+            }
+            
+            // 載入成功後立即以新格式保存，確保格式一致性
+            if (Array.isArray(parsedData) || !parsedData.categories) {
+              console.log('Converting to new format and saving back to Gist');
+              await saveCategoriesToGist();
+            }
+            
+            showMessage('syncedToGithub', 'info');
+            return true;
+          } else {
+            console.warn('No valid categories found in the Gist data');
+            categoriesGistId = null;
+            await chrome.storage.sync.remove('categoriesGistId');
           }
-          
-          showMessage('已從 GitHub 同步分類數據', 'info');
-          return true;
         }
       } catch (gistError) {
         console.error('Error fetching Gist:', gistError);
@@ -1099,10 +1230,10 @@ async function loadCategoriesFromGist() {
     // 更新同步狀態
     if (syncIndicator) {
       if (found) {
-        syncIndicator.textContent = '已同步';
+        syncIndicator.textContent = getMessage('synced');
         syncIndicator.className = 'sync-status synced';
       } else {
-        syncIndicator.textContent = '未同步';
+        syncIndicator.textContent = getMessage('notSynced');
         syncIndicator.className = 'sync-status not-synced';
       }
     }
@@ -1114,10 +1245,63 @@ async function loadCategoriesFromGist() {
     // 更新同步狀態
     const syncIndicator = document.getElementById('sync-indicator');
     if (syncIndicator) {
-      syncIndicator.textContent = '同步失敗';
+      syncIndicator.textContent = getMessage('syncFailed');
       syncIndicator.className = 'sync-status sync-error';
     }
     
+    return false;
+  }
+}
+
+// 創建新的分類 Gist
+async function createNewCategoriesGist() {
+  try {
+    console.log('Creating new categories Gist');
+    
+    // 準備 Gist 內容
+    const categoriesToSave = categories.map(cat => ({
+      ...cat,
+      repositories: cat.repositories || []
+    }));
+    
+    // 獲取當前語言設定
+    const currentLang = getCurrentLanguage();
+    
+    const categoriesData = {
+      categories: categoriesToSave,
+      lastUpdated: new Date().toISOString(),
+      language: currentLang // 加入當前語言設定
+    };
+    
+    const gistContent = JSON.stringify(categoriesData, null, 2);
+    
+    // 創建新的 Gist
+    const response = await fetchGitHubData('gists', {
+      method: 'POST',
+      body: JSON.stringify({
+        description: CATEGORIES_GIST_DESCRIPTION,
+        public: false,
+        files: {
+          [CATEGORIES_GIST_FILENAME]: {
+            content: gistContent
+          }
+        }
+      })
+    });
+    
+    // 保存新創建的 Gist ID
+    categoriesGistId = response.id;
+    console.log('New Gist created with ID:', categoriesGistId);
+    
+    // 保存 Gist ID 到 storage
+    await chrome.storage.sync.set({ categoriesGistId: categoriesGistId });
+    
+    showMessage('createdAndSyncedToGithub', 'success');
+    
+    return true;
+  } catch (error) {
+    console.error('Error creating new Gist:', error);
+    showMessage('createGistFailed', 'error');
     return false;
   }
 }
@@ -1164,12 +1348,40 @@ async function findCategoriesGist() {
           if (content) {
             try {
               const parsedData = JSON.parse(content);
+              let categoriesData = [];
               
+              // 處理不同格式的資料
               if (parsedData.categories && Array.isArray(parsedData.categories)) {
+                categoriesData = parsedData.categories;
+              } else if (Array.isArray(parsedData)) {
+                categoriesData = parsedData;
+              } else {
+                // 嘗試處理其他格式
+                console.warn('Unknown data format in found Gist, attempting to migrate');
+                
+                if (typeof parsedData === 'object') {
+                  // 查找任何看起來像分類的數組
+                  for (const key in parsedData) {
+                    if (Array.isArray(parsedData[key])) {
+                      const possibleCategories = parsedData[key];
+                      if (possibleCategories.length > 0 && 
+                          possibleCategories[0].name && 
+                          (possibleCategories[0].repositories === undefined || 
+                           Array.isArray(possibleCategories[0].repositories))) {
+                        categoriesData = possibleCategories;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+              
+              // 如果找到了有效的分類數據
+              if (categoriesData.length > 0) {
                 // 保存原始分類數據
-                categories = parsedData.categories.map(cat => ({
+                categories = categoriesData.map(cat => ({
                   name: cat.name,
-                  repositories: cat.repositories || []
+                  repositories: Array.isArray(cat.repositories) ? cat.repositories : []
                 }));
                 
                 // 將新格式轉換為兼容舊格式的數據
@@ -1180,12 +1392,14 @@ async function findCategoriesGist() {
                 categories.forEach(category => {
                   if (category.repositories && Array.isArray(category.repositories)) {
                     category.repositories.forEach(repo => {
-                      const itemId = repo.id;
-                      if (!itemCategories[itemId]) {
-                        itemCategories[itemId] = [];
-                      }
-                      if (!itemCategories[itemId].includes(category.name)) {
-                        itemCategories[itemId].push(category.name);
+                      const itemId = repo.id || (repo.repoId || repo.starId);
+                      if (itemId) {
+                        if (!itemCategories[itemId]) {
+                          itemCategories[itemId] = [];
+                        }
+                        if (!itemCategories[itemId].includes(category.name)) {
+                          itemCategories[itemId].push(category.name);
+                        }
                       }
                     });
                   }
@@ -1193,9 +1407,30 @@ async function findCategoriesGist() {
                 
                 console.log('Categories loaded from found Gist:', categories);
                 console.log('Item categories converted:', itemCategories);
+                
+                // 處理語言設定
+                if (parsedData.language) {
+                  savedLanguage = parsedData.language;
+                  console.log('Language preference loaded from Gist:', savedLanguage);
+                }
+                
+                // 載入成功後立即以新格式保存，確保格式一致性
+                if (Array.isArray(parsedData) || !parsedData.categories) {
+                  console.log('Converting to new format and saving back to Gist');
+                  await saveCategoriesToGist();
+                }
+                
+                showMessage('syncedToGithub', 'info');
+                return true;
+              } else {
+                console.warn('No valid categories found in the Gist data');
+                categoriesGistId = null;
+                await chrome.storage.sync.remove('categoriesGistId');
               }
             } catch (parseError) {
               console.error('Error parsing Gist content:', parseError);
+              showMessage('gistFormatError', 'error');
+              
               // 如果解析失敗，可能是格式不正確，設置 ID 為 null 以便創建新的
               categoriesGistId = null;
               await chrome.storage.sync.remove('categoriesGistId');
@@ -1245,7 +1480,7 @@ function updateCategoryList() {
   if (categories.length === 0) {
     const emptyMessage = document.createElement('div');
     emptyMessage.className = 'empty-categories';
-    emptyMessage.textContent = '您還沒有建立任何分類。使用下方的輸入框來添加您的第一個分類。';
+    emptyMessage.textContent = getMessage('noCategoriesYet');
     categoriesList.appendChild(emptyMessage);
     return;
   }
@@ -1262,13 +1497,11 @@ function updateCategoryList() {
     
     // Delete button
     const deleteButton = document.createElement('button');
-    deleteButton.textContent = '刪除';
+    deleteButton.textContent = getMessage('delete');
     deleteButton.className = 'category-delete';
     deleteButton.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (confirm(`確定要刪除分類「${category.name}」嗎？\n注意：與此分類關聯的所有項目將會失去此分類標籤。`)) {
-        deleteCategory(category.name);
-      }
+      deleteCategory(category.name);
     });
     
     // Add elements to the list item
@@ -1285,13 +1518,13 @@ function addNewCategory() {
   const categoryName = newCategoryInput.value.trim();
   
   if (!categoryName) {
-    showMessage('請輸入分類名稱', 'error');
+    showMessage('pleaseEnterCategoryName', 'error');
     return;
   }
   
   // 檢查是否已存在相同名稱的分類
   if (categories.some(cat => cat.name.toLowerCase() === categoryName.toLowerCase())) {
-    showMessage('分類名稱已存在', 'error');
+    showMessage('categoryExists', 'error');
     return;
   }
   
@@ -1302,7 +1535,7 @@ function addNewCategory() {
   
   categories.push(newCategory);
   newCategoryInput.value = '';
-  showMessage(`已新增「${categoryName}」分類`, 'success');
+  showMessage('categoryAdded', 'success', categoryName);
   
   // 更新分類列表顯示
   updateCategoryList();
@@ -1313,6 +1546,11 @@ function addNewCategory() {
 
 // 刪除分類
 async function deleteCategory(categoryName) {
+  // Confirm deletion with user
+  if (!confirm(getMessage('deleteConfirmation', categoryName))) {
+    return;
+  }
+  
   // 找到要刪除的分類索引
   const index = categories.findIndex(cat => cat.name === categoryName);
   if (index === -1) return;
@@ -1354,7 +1592,7 @@ async function deleteCategory(categoryName) {
   // 立即儲存更新後的分類數據
   await saveCategoriesData();
   
-  showMessage(`已刪除「${categoryName}」分類`, 'info');
+  showMessage('categoryDeleted', 'info', categoryName);
 }
 
 // 顯示分類管理對話框
@@ -1390,7 +1628,7 @@ async function saveAndCloseCategoryDialog() {
     closeCategoryDialog();
     
     // 顯示保存中訊息
-    showMessage('正在儲存分類...', 'info');
+    showMessage('savingCategories', 'info');
     showLoading();
     
     // 保存數據
@@ -1406,11 +1644,11 @@ async function saveAndCloseCategoryDialog() {
       loadStars();
     }
     
-    showMessage('分類已成功儲存', 'success');
+    showMessage('categoriesSaved', 'success');
     hideLoading();
   } catch (error) {
     console.error('Error saving categories:', error);
-    showMessage('儲存分類失敗', 'error');
+    showMessage('savingCategoriesFailed', 'error');
     hideLoading();
   }
 }
@@ -1448,7 +1686,7 @@ function showItemCategoryDialog(itemId, itemName, itemType) {
   currentItemType = itemType;
   
   // 更新對話框標題
-  itemCategoryTitle.textContent = `為「${itemName}」設置分類`;
+  itemCategoryTitle.textContent = getMessage('setCategoriesFor', itemName);
   
   // 清空分類選擇列表
   itemCategoriesList.innerHTML = '';
@@ -1512,7 +1750,7 @@ async function toggleItemCategory(itemId, categoryName) {
       itemCategories[itemId].push(categoryName);
       // 同時更新 categories 結構中的 repositories
       updateCategoryRepositories(categoryName, itemId, 'add');
-      showMessage(`已添加到分類`, 'success');
+      showMessage('addedToCategory', 'success');
     } else {
       // 如果有，移除分類
       itemCategories[itemId].splice(categoryIndex, 1);
@@ -1523,7 +1761,7 @@ async function toggleItemCategory(itemId, categoryName) {
       if (itemCategories[itemId].length === 0) {
         delete itemCategories[itemId];
       }
-      showMessage(`已從分類中移除`, 'info');
+      showMessage('removedFromCategory', 'info');
     }
     
     // 保存分類數據
@@ -1549,7 +1787,7 @@ async function toggleItemCategory(itemId, categoryName) {
     hideLoading();
   } catch (error) {
     console.error('Error toggling category:', error);
-    showMessage('分類操作失敗', 'error');
+    showMessage('categoryOperationFailed', 'error');
     hideLoading();
   }
 }
@@ -1629,7 +1867,7 @@ async function saveItemCategories() {
     closeItemCategoryDialog();
     
     // 顯示成功訊息
-    showMessage('分類已成功更新', 'success');
+    showMessage('categoriesUpdated', 'success');
     
     // 應用當前過濾器
     filterItemsByCategory();
@@ -1637,7 +1875,7 @@ async function saveItemCategories() {
     hideLoading();
   } catch (error) {
     console.error('Error saving item categories:', error);
-    showMessage('保存分類失敗', 'error');
+    showMessage('savingCategoriesFailed', 'error');
     hideLoading();
   }
 }
@@ -1689,8 +1927,19 @@ function updateCategoryBadges(badgesContainer, itemId) {
 }
 
 // 顯示提示訊息
-function showMessage(message, type = 'info') {
+function showMessage(messageKey, type = 'info', ...args) {
   if (!messageContainer) return;
+  
+  // Get the translated message
+  let message = messageKey;
+  
+  // If the message key exists in the i18n, use it
+  // Otherwise, use the original message text
+  try {
+    message = getMessage(messageKey, ...args) || messageKey;
+  } catch (e) {
+    console.warn('Translation not found for message:', messageKey);
+  }
   
   const messageElement = document.createElement('div');
   messageElement.className = `message ${type}`;
@@ -1768,67 +2017,18 @@ function closeAllDropdowns(event) {
   });
 }
 
-// 創建新的分類 Gist
-async function createNewCategoriesGist() {
-  try {
-    console.log('Creating new categories Gist');
-    
-    // 準備 Gist 內容
-    const categoriesToSave = categories.map(cat => ({
-      ...cat,
-      repositories: cat.repositories || []
-    }));
-    
-    const categoriesData = {
-      categories: categoriesToSave,
-      lastUpdated: new Date().toISOString()
-    };
-    
-    const gistContent = JSON.stringify(categoriesData, null, 2);
-    
-    // 創建新的 Gist
-    const response = await fetchGitHubData('gists', {
-      method: 'POST',
-      body: JSON.stringify({
-        description: CATEGORIES_GIST_DESCRIPTION,
-        public: false,
-        files: {
-          [CATEGORIES_GIST_FILENAME]: {
-            content: gistContent
-          }
-        }
-      })
-    });
-    
-    // 保存新創建的 Gist ID
-    categoriesGistId = response.id;
-    console.log('New Gist created with ID:', categoriesGistId);
-    
-    // 保存 Gist ID 到 storage
-    await chrome.storage.sync.set({ categoriesGistId: categoriesGistId });
-    
-    showMessage('已創建並同步到 GitHub', 'success');
-    
-    return true;
-  } catch (error) {
-    console.error('Error creating new Gist:', error);
-    showMessage('創建 Gist 失敗', 'error');
-    return false;
-  }
-}
-
 // 在項目分類對話框中快速添加新分類
 async function addQuickCategory() {
   const categoryName = newQuickCategoryInput.value.trim();
   
   if (!categoryName) {
-    showMessage('請輸入分類名稱', 'error');
+    showMessage('pleaseEnterCategoryName', 'error');
     return;
   }
   
   // 檢查是否已存在相同名稱的分類
   if (categories.some(cat => cat.name.toLowerCase() === categoryName.toLowerCase())) {
-    showMessage('分類名稱已存在', 'error');
+    showMessage('categoryExists', 'error');
     return;
   }
   
@@ -1855,7 +2055,7 @@ async function addQuickCategory() {
     checkbox.checked = true;
   }
   
-  showMessage(`已新增「${categoryName}」分類`, 'success');
+  showMessage('categoryAdded', 'success', categoryName);
 }
 
 // 刷新項目分類列表
@@ -1908,4 +2108,9 @@ function hideLoading() {
   if (loadingOverlay) {
     loadingOverlay.classList.add('hidden');
   }
+}
+
+// 在GitHub中打開
+function openInGitHub(url) {
+  window.open(url, '_blank');
 } 
