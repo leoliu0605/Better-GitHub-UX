@@ -1,91 +1,116 @@
 # Better GitHub UX
 
-這是一個功能豐富的 Chrome 擴充功能，讓你可以方便地管理 GitHub 倉庫、星標和 Gist。
+A feature-rich Chrome extension designed to enhance your GitHub experience by providing advanced management for your repositories and starred items, including categorization and synchronization.
 
-## 功能特色
+## Key Features
 
-- **GitHub 帳號整合**：使用 OAuth 安全登入你的 GitHub 帳號
-- **個人倉庫管理**：查看你擁有的所有倉庫
-- **星標項目**：瀏覽你星標的專案
-- **Gist 管理**：查看和創建 Gist 程式碼片段
-- **美觀的使用者界面**：簡潔、直觀的設計，便於使用
+-   **GitHub Account Integration**: Securely log in using GitHub OAuth.
+-   **Repository Management**: View a list of repositories you own.
+-   **Starred Item Management**: Browse repositories you have starred.
+-   **Categorization**:
+    -   Create and manage custom categories.
+    -   Assign repositories and starred items to one or more categories.
+    -   Filter repositories and stars based on assigned categories.
+-   **Data Synchronization**:
+    -   Category data and language preferences are automatically synced to a private GitHub Gist.
+    -   Ensures your setup is consistent across different devices.
+    -   Handles data migration from older formats gracefully.
+-   **Internationalization (i18n)**:
+    -   Supports multiple languages (currently English and Traditional Chinese).
+    -   Automatically detects browser language preference.
+    -   Includes a language switcher to manually change the display language.
+-   **Modern User Interface**: Clean, intuitive design focused on ease of use, including loading indicators and user feedback messages.
 
-## 安裝指南
+## Installation Guide
 
-### 開發者安裝
+### Developer Installation
 
-1. 複製此專案到本地：
-   ```
-   git clone https://github.com/leoliu0605/better-github-ux.git
-   ```
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/leoliu0605/better-github-ux.git
+    cd better-github-ux
+    ```
 
-2. 在 GitHub 上創建 OAuth 應用程序：
-   - 前往 [GitHub Developer Settings](https://github.com/settings/developers)
-   - 點擊 "New OAuth App"
-   - 填寫應用程序信息：
-     - Application name: Better GitHub UX
-     - Homepage URL: 可以留空
-     - Authorization callback URL: 在載入擴充功能後從控制台取得 (格式: `https://[extension-id].chromiumapp.org/`)
+2.  **Create a GitHub OAuth Application**:
+    -   Go to [GitHub Developer Settings](https://github.com/settings/developers).
+    -   Click "New OAuth App".
+    -   Fill in the application details:
+        -   **Application name**: `Better GitHub UX` (or your preferred name)
+        -   **Homepage URL**: Can be left blank or set to the repository URL.
+        -   **Authorization callback URL**: This is crucial. After loading the extension in Chrome (see step 5), find the extension's ID in `chrome://extensions/`. The callback URL will be `https://<extension-id>.chromiumapp.org/`. (Replace `<extension-id>` with the actual ID).
 
-3. 獲取 OAuth 認證：
-   - 複製生成的 Client ID
-   - 生成並複製 Client Secret
+3.  **Get OAuth Credentials**:
+    -   Copy the generated **Client ID**.
+    -   Generate a **Client Secret** and copy it. **Keep this secret secure!**
 
-4. 配置擴充功能：
-   - 複製 `config.example.js` 為 `config.js`
-   - 在 `config.js` 中填入你的 Client ID 和 Client Secret
+4.  **Configure the Extension**:
+    -   Duplicate the `config.example.js` file and rename it to `config.js`.
+    -   Open `config.js` and paste your **Client ID** and **Client Secret** into the respective fields.
 
-5. 在 Chrome 中載入：
-   - 開啟 Chrome 瀏覽器
-   - 前往 `chrome://extensions/`
-   - 開啟 "開發者模式"
-   - 點擊 "載入未封裝項目"
-   - 選擇專案目錄
+5.  **Load the Extension in Chrome**:
+    -   Open Chrome and navigate to `chrome://extensions/`.
+    -   Enable "Developer mode" (usually a toggle in the top-right corner).
+    -   Click "Load unpacked".
+    -   Select the `better-github-ux` directory (the one you cloned).
+    -   *(Now you can find the extension ID for the callback URL in step 2)*.
 
-### 使用者安裝 (擴充功能發布後)
+### User Installation (Once published)
 
-1. 前往 [Chrome Web Store](https://chrome.google.com/webstore/category/extensions)
-2. 搜尋 "Better GitHub UX"
-3. 點擊 "添加至 Chrome"
+1.  Navigate to the [Chrome Web Store](https://chrome.google.com/webstore/category/extensions).
+2.  Search for "Better GitHub UX".
+3.  Click "Add to Chrome".
 
-## 使用方法
+## Usage
 
-1. 點擊 Chrome 工具欄中的擴充功能圖標
-2. 首次使用時點擊 "Connect with GitHub" 按鈕登入
-3. 授權應用程序訪問你的 GitHub 帳號
-4. 登入後你可以：
-   - 查看你擁有的倉庫列表
-   - 瀏覽你星標的倉庫
-   - 查看和創建 Gist
+1.  Click the extension icon in your Chrome toolbar.
+2.  On first use, click the "Connect with GitHub" button to log in.
+3.  Authorize the application to access your GitHub account (requires `repo` and `user` scopes).
+4.  Once logged in, you can:
+    -   Switch between viewing your **Repositories** and **Stars** using the tabs.
+    -   **Manage Categories**: Use the tag icon (<i class="fas fa-tags"></i>) button's dropdown to add or delete categories.
+    -   **Sync Data**: Click the sync icon (<i class="fas fa-cloud-upload-alt"></i>) to manually sync category and language data with your GitHub Gist (it also syncs automatically on changes). The indicator next to it shows the sync status.
+    -   **Assign Categories**: Click the tag icon (<i class="fas fa-tag"></i>) next to any repository or star to open the category assignment dialog or quickly add/remove categories from the dropdown.
+    -   **Filter**: Use the dropdown menu above the tabs to filter the displayed items by category.
+    -   **Switch Language**: Click the globe icon (<i class="fas fa-globe"></i>) in the top-right corner to change the display language.
+    -   **Open in GitHub**: Click the external link icon (<i class="fas fa-external-link-alt"></i>) to open the repository/star page on GitHub.
 
-## 隱私與安全
+## Data Synchronization
 
-- 此擴充功能只獲取必要的 GitHub 權限
-- 所有數據直接從 GitHub API 獲取，不經過第三方伺服器
-- 個人訪問令牌安全存儲在瀏覽器本地存儲中
-- 源代碼完全開放，透明且可審計
+-   This extension uses a private GitHub Gist associated with your account to store your categories and language preferences.
+-   This allows your settings to persist across different browser installations or devices where you are logged into both Chrome and GitHub.
+-   The first time you make a change (like adding a category or changing the language), the extension will automatically create a Gist named `better-github-ux.json` with the description `Better GitHub UX - Categories Data`.
+-   Synchronization happens automatically when changes are made and can also be triggered manually using the sync button.
 
-## 技術細節
+## Privacy and Security
 
-- **前端**：HTML5, CSS3, JavaScript
-- **API**：GitHub REST API
-- **認證**：GitHub OAuth 2.0
-- **存儲**：Chrome Storage API
+-   The extension requests only the necessary GitHub permissions (`repo` for accessing private/public repos and stars, `user` for basic profile info). The `gist` scope is implicitly included when creating the private Gist for sync, but the extension doesn't interact with other Gists.
+-   All GitHub data is fetched directly from the GitHub API and processed locally in your browser. No data is sent to third-party servers.
+-   Your GitHub access token is stored securely in Chrome's local storage (`chrome.storage.local`).
+-   The category/language sync data is stored in a *private* Gist accessible only to you.
+-   The source code is open and available for review.
 
-## 貢獻指南
+## Technology Stack
 
-歡迎提交 Pull Request 來改進此專案！
+-   **Frontend**: HTML5, CSS3, JavaScript (ES Modules)
+-   **API**: GitHub REST API v3
+-   **Authentication**: GitHub OAuth 2.0 (using `chrome.identity`)
+-   **Storage**: Chrome Storage API (`chrome.storage.sync` for Gist ID, `chrome.storage.local` for token), GitHub Gist for category/language data.
+-   **Icons**: Font Awesome
 
-1. Fork 這個專案
-2. 創建你的功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交你的修改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 開啟一個 Pull Request
+## Contributing
 
-## 授權
+Contributions are welcome! Please follow these steps:
 
-此專案使用 MIT 授權 - 詳見 [LICENSE](LICENSE) 文件。
+1.  Fork the repository.
+2.  Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4.  Push to the branch (`git push origin feature/AmazingFeature`).
+5.  Open a Pull Request.
 
-## 聯絡方式
+## License
 
-如有任何問題或建議，請開啟 Issue 或聯繫專案維護者。
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+If you have any questions or suggestions, please open an issue on the GitHub repository.
