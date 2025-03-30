@@ -209,20 +209,17 @@ function addEventListeners() {
   
   syncCategoriesButton.addEventListener('click', async () => {
     try {
-      syncCategoriesButton.disabled = true;
-      syncCategoriesButton.textContent = getMessage('syncing');
+      updateSyncButtonState('syncing');
       showLoading();
       await saveCategoriesToGist();
-      syncCategoriesButton.textContent = getMessage('syncToGithub');
-      syncCategoriesButton.disabled = false;
+      updateSyncButtonState('default');
       hideLoading();
     } catch (error) {
       console.error('Sync error:', error);
-      syncCategoriesButton.textContent = getMessage('syncFailed');
+      updateSyncButtonState('error');
       hideLoading();
       setTimeout(() => {
-        syncCategoriesButton.textContent = getMessage('syncToGithub');
-        syncCategoriesButton.disabled = false;
+        updateSyncButtonState('default');
       }, 3000);
     }
   });
@@ -935,6 +932,9 @@ async function saveCategoriesToGist() {
       syncIndicator.className = 'sync-status syncing';
     }
     
+    // 更新同步按鈕狀態
+    updateSyncButtonState('syncing');
+    
     // 將 itemCategories 數據轉換為新的格式
     // 先複製 categories 並清除 repositories
     const categoriesToSave = categories.map(cat => ({
@@ -1054,6 +1054,9 @@ async function saveCategoriesToGist() {
       syncIndicator.className = 'sync-status synced';
     }
     
+    // 恢復同步按鈕狀態
+    updateSyncButtonState('default');
+    
     showMessage('syncedToGithub', 'success');
     return true;
   } catch (error) {
@@ -1065,6 +1068,9 @@ async function saveCategoriesToGist() {
       syncIndicator.textContent = getMessage('syncFailed');
       syncIndicator.className = 'sync-status sync-error';
     }
+    
+    // 更新同步按鈕為錯誤狀態
+    updateSyncButtonState('error');
     
     showMessage('syncToGithubFailed', 'error');
     return false;
@@ -1080,6 +1086,9 @@ async function loadCategoriesFromGist() {
       syncIndicator.textContent = getMessage('loading');
       syncIndicator.className = 'sync-status syncing';
     }
+    
+    // 更新同步按鈕狀態
+    updateSyncButtonState('syncing');
     
     // 從 storage 獲取已保存的 Gist ID
     const data = await chrome.storage.sync.get(['categoriesGistId']);
@@ -1102,6 +1111,7 @@ async function loadCategoriesFromGist() {
           } catch (parseError) {
             console.error('Error parsing Gist JSON content:', parseError);
             showMessage('gistFormatError', 'error');
+            updateSyncButtonState('error');
             return false;
           }
           
@@ -1185,6 +1195,9 @@ async function loadCategoriesFromGist() {
               syncIndicator.className = 'sync-status synced';
             }
             
+            // 更新同步按鈕狀態
+            updateSyncButtonState('default');
+            
             // 載入成功後立即以新格式保存，確保格式一致性
             if (Array.isArray(parsedData) || !parsedData.categories) {
               console.log('Converting to new format and saving back to Gist');
@@ -1197,6 +1210,7 @@ async function loadCategoriesFromGist() {
             console.warn('No valid categories found in the Gist data');
             categoriesGistId = null;
             await chrome.storage.sync.remove('categoriesGistId');
+            updateSyncButtonState('error');
           }
         }
       } catch (gistError) {
@@ -1212,9 +1226,12 @@ async function loadCategoriesFromGist() {
           // 嘗試創建新的 Gist
           const created = await createNewCategoriesGist();
           if (created) {
+            updateSyncButtonState('default');
             return true;
           }
         }
+        // 顯示錯誤狀態
+        updateSyncButtonState('error');
       }
     }
     
@@ -1232,9 +1249,11 @@ async function loadCategoriesFromGist() {
       if (found) {
         syncIndicator.textContent = getMessage('synced');
         syncIndicator.className = 'sync-status synced';
+        updateSyncButtonState('default');
       } else {
         syncIndicator.textContent = getMessage('notSynced');
         syncIndicator.className = 'sync-status not-synced';
+        updateSyncButtonState('error');
       }
     }
     
@@ -1249,6 +1268,9 @@ async function loadCategoriesFromGist() {
       syncIndicator.className = 'sync-status sync-error';
     }
     
+    // 更新同步按鈕為錯誤狀態
+    updateSyncButtonState('error');
+    
     return false;
   }
 }
@@ -1257,6 +1279,9 @@ async function loadCategoriesFromGist() {
 async function createNewCategoriesGist() {
   try {
     console.log('Creating new categories Gist');
+    
+    // 更新同步按鈕狀態
+    updateSyncButtonState('syncing');
     
     // 準備 Gist 內容
     const categoriesToSave = categories.map(cat => ({
@@ -1296,11 +1321,18 @@ async function createNewCategoriesGist() {
     // 保存 Gist ID 到 storage
     await chrome.storage.sync.set({ categoriesGistId: categoriesGistId });
     
+    // 更新同步按鈕狀態
+    updateSyncButtonState('default');
+    
     showMessage('createdAndSyncedToGithub', 'success');
     
     return true;
   } catch (error) {
     console.error('Error creating new Gist:', error);
+    
+    // 更新同步按鈕為錯誤狀態
+    updateSyncButtonState('error');
+    
     showMessage('createGistFailed', 'error');
     return false;
   }
@@ -2113,4 +2145,25 @@ function hideLoading() {
 // 在GitHub中打開
 function openInGitHub(url) {
   window.open(url, '_blank');
+}
+
+// 更新同步按鈕的圖標和文字
+function updateSyncButtonState(state) {
+  if (!syncCategoriesButton) return;
+  
+  switch (state) {
+    case 'syncing':
+      syncCategoriesButton.innerHTML = `<i class="fas fa-sync fa-spin"></i>`;
+      syncCategoriesButton.disabled = true;
+      break;
+    case 'error':
+      syncCategoriesButton.innerHTML = `<i class="fas fa-exclamation-circle"></i>`;
+      syncCategoriesButton.disabled = true;
+      break;
+    case 'default':
+    default:
+      syncCategoriesButton.innerHTML = `<i class="fas fa-cloud-upload-alt"></i>`;
+      syncCategoriesButton.disabled = false;
+      break;
+  }
 } 
