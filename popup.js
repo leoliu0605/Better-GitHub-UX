@@ -69,6 +69,84 @@ let loadingOverlay;
 // Language switcher container
 let languageSwitcher;
 
+// Variables for handling external repository data
+let externalRepoData = null;
+let popupPort = null;
+
+// Connect to the background script when the popup is opened
+function connectToBackgroundScript() {
+  // Create a connection to the background script
+  popupPort = chrome.runtime.connect({ name: 'popup' });
+  
+  // Check if we were opened from a content script
+  chrome.runtime.sendMessage({ action: 'getRepositoryData' }, response => {
+    if (chrome.runtime.lastError) {
+      console.error('Error getting repository data:', chrome.runtime.lastError);
+      return;
+    }
+    
+    if (response && response.repo) {
+      console.log('Received repository data from background script:', response.repo);
+      externalRepoData = response.repo;
+      
+      // Process the external repository
+      processExternalRepository();
+    }
+  });
+}
+
+// Process a repository received from external sources (content script)
+async function processExternalRepository() {
+  if (!externalRepoData || !externalRepoData.id) {
+    console.warn('Invalid external repository data');
+    return;
+  }
+  
+  // Ensure we're logged in and data is loaded
+  if (!accessToken) {
+    console.log('Waiting for login before processing external repository');
+    // Set up a listener for the login event
+    window.addEventListener('logged-in', () => {
+      setTimeout(processExternalRepository, 1000); // Wait for data to load
+    }, { once: true });
+    return;
+  }
+  
+  // Switch to the repositories tab if not already there
+  if (currentTab !== 'repos') {
+    await switchTab('repos');
+  }
+  
+  console.log('Processing external repository:', externalRepoData);
+  
+  // Find the repository in our loaded repositories
+  const repository = repositories.find(repo => repo.id.toString() === externalRepoData.id.toString());
+  
+  if (repository) {
+    console.log('Found matching repository in loaded data:', repository);
+    // Open the category dialog for this repository
+    await openCategoryDialog(repository);
+  } else {
+    console.log('Repository not found in loaded data, retrieving from API');
+    
+    try {
+      // Get the repository data from the GitHub API
+      const repoData = await fetchGitHubData(`repos/${externalRepoData.owner}/${externalRepoData.shortName}`);
+      
+      if (repoData && repoData.id) {
+        console.log('Retrieved repository data from API:', repoData);
+        // Open the category dialog for this repository
+        await openCategoryDialog(repoData);
+      } else {
+        showMessage('Failed to retrieve repository data', 'error');
+      }
+    } catch (error) {
+      console.error('Error retrieving repository data:', error);
+      showMessage('Failed to retrieve repository data', 'error');
+    }
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Popup loaded');
@@ -119,6 +197,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   showLoading();
   
   await checkLoginStatus();
+  
+  // Connect to the background script
+  connectToBackgroundScript();
 });
 
 // Update tooltips and placeholders that might be set programmatically
@@ -242,23 +323,56 @@ function addEventListeners() {
 // 檢查登入狀態
 async function checkLoginStatus() {
   try {
-    showLoading();
     console.log('Checking login status');
+    showLoading();
     
-    // 檢查 URL 參數中是否有 code
+    // 從 URL 檢查是否有 code 參數（OAuth 回調）
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
-    console.log('Code from URL:', code);
     
     if (code) {
-      // 從 URL code 獲取 token
+      console.log('Found code in URL, exchanging for token');
       await handleCodeExchange(code);
-    } else {
-      // 從 storage 獲取 token
-      await loadTokenFromStorage();
+      return;
     }
+    
+    // 從 storage 加載 token
+    const token = await loadTokenFromStorage();
+    
+    if (token) {
+      console.log('Found token in storage');
+      
+      // Make sure the token is valid by making a simple API call
+      try {
+        // Check for access to the GitHub API with this token
+        const userData = await fetchGitHubData('user');
+        if (userData && userData.login) {
+          console.log('Token is valid, showing user section');
+          showUserSection();
+          await loadUserData();
+          return;
+        } else {
+          console.warn('Token found but API call failed');
+          // Token might be invalid, clear it
+          accessToken = null;
+        }
+      } catch (apiError) {
+        console.error('Error verifying token:', apiError);
+        // Token is likely invalid, clear it
+        accessToken = null;
+        await chrome.storage.local.remove(['accessToken', 'github_token']);
+      }
+    }
+    
+    // 如果沒有 token 或 token 無效，顯示登入畫面
+    console.log('No valid token found, showing login section');
+    loginSection.classList.remove('hidden');
+    userSection.classList.add('hidden');
+    hideLoading();
   } catch (error) {
     console.error('Error checking login status:', error);
+    loginSection.classList.remove('hidden');
+    userSection.classList.add('hidden');
     hideLoading();
   }
 }
@@ -284,15 +398,81 @@ async function handleCodeExchange(code) {
 
 // 從 storage 載入 token
 async function loadTokenFromStorage() {
-  const tokenData = await chrome.storage.local.get('github_token');
-  console.log('Token from storage:', tokenData);
-  
-  if (tokenData.github_token) {
-    accessToken = tokenData.github_token;
-    showUserSection();
-    await loadUserData();
-  } else {
-    hideLoading();
+  try {
+    console.log('Attempting to load token from storage');
+    
+    // Try each storage location in sequence, from most to least likely
+    
+    // 1. Try local storage with new key name (primary location)
+    const localData = await chrome.storage.local.get('accessToken');
+    if (localData.accessToken) {
+      console.log('Found access token in local storage');
+      accessToken = localData.accessToken;
+      await shareTokenWithBackgroundScript(accessToken);
+      return accessToken;
+    }
+    
+    // 2. Try session storage if available (for current session)
+    if (chrome.storage.session) {
+      try {
+        const sessionData = await chrome.storage.session.get('accessToken');
+        if (sessionData.accessToken) {
+          console.log('Found access token in session storage');
+          // Save to local storage for future use
+          await chrome.storage.local.set({ accessToken: sessionData.accessToken });
+          accessToken = sessionData.accessToken;
+          await shareTokenWithBackgroundScript(accessToken);
+          return accessToken;
+        }
+      } catch (sessionError) {
+        console.warn('Error accessing session storage:', sessionError);
+      }
+    }
+    
+    // 3. Try older token name (for backward compatibility)
+    const oldTokenData = await chrome.storage.local.get('github_token');
+    if (oldTokenData.github_token) {
+      console.log('Found access token under legacy name (github_token)');
+      // Save under the new key name for future use
+      await chrome.storage.local.set({ accessToken: oldTokenData.github_token });
+      accessToken = oldTokenData.github_token;
+      await shareTokenWithBackgroundScript(accessToken);
+      return accessToken;
+    }
+    
+    // 4. Last resort, try sync storage (though we typically don't store the token here for security)
+    const syncData = await chrome.storage.sync.get('accessToken');
+    if (syncData.accessToken) {
+      console.log('Found access token in sync storage');
+      // Save to local storage for future use
+      await chrome.storage.local.set({ accessToken: syncData.accessToken });
+      accessToken = syncData.accessToken;
+      await shareTokenWithBackgroundScript(accessToken);
+      return accessToken;
+    }
+    
+    console.log('No token found in any storage location');
+    return null;
+  } catch (error) {
+    console.error('Error loading token from storage:', error);
+    return null;
+  }
+}
+
+// Helper function to share token with background script
+async function shareTokenWithBackgroundScript(token) {
+  try {
+    if (!token) return false;
+    
+    await chrome.runtime.sendMessage({
+      action: 'storeAccessToken',
+      token: token
+    });
+    console.log('Token shared with background script');
+    return true;
+  } catch (error) {
+    console.warn('Could not share token with background script:', error);
+    return false;
   }
 }
 
@@ -2165,5 +2345,116 @@ function updateSyncButtonState(state) {
       syncCategoriesButton.innerHTML = `<i class="fas fa-cloud-upload-alt"></i>`;
       syncCategoriesButton.disabled = false;
       break;
+  }
+}
+
+// Function to initialize after login succeeded
+async function initializeAfterLogin(token) {
+  // Save token locally
+  accessToken = token;
+  await chrome.storage.local.set({ accessToken: token });
+  
+  // Also share token with background script for direct Gist access
+  try {
+    await chrome.runtime.sendMessage({ 
+      action: 'storeAccessToken', 
+      token: token 
+    });
+    console.log('Token shared with background script');
+  } catch (error) {
+    console.warn('Could not share token with background script:', error);
+  }
+  
+  console.log('Got access token');
+  
+  // 顯示登錄後的界面
+  document.getElementById('login-section').classList.add('hidden');
+  document.getElementById('user-section').classList.remove('hidden');
+  
+  // 加載用戶資料
+  await loadUserData();
+  
+  // Dispatch a logged-in event
+  window.dispatchEvent(new Event('logged-in'));
+}
+
+// GitHub 登入
+async function loginWithGitHub() {
+  showLoading();
+  
+  try {
+    const url = `https://github.com/login/oauth/authorize?client_id=${config.clientId}&scope=repo,user,gist`;
+    const callbackURL = chrome.identity.getRedirectURL();
+    
+    chrome.identity.launchWebAuthFlow({
+      url: url,
+      interactive: true
+    }, async (responseUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error('Authentication error:', chrome.runtime.lastError.message);
+        showMessage('Authentication failed', 'error');
+        hideLoading();
+        return;
+      }
+      
+      if (!responseUrl) {
+        console.error('No response URL returned');
+        showMessage('Authentication failed', 'error');
+        hideLoading();
+        return;
+      }
+      
+      // 從回傳的 URL 獲取 code 參數
+      const code = new URL(responseUrl).searchParams.get('code');
+      
+      if (!code) {
+        console.error('No authorization code in response');
+        showMessage('Authentication failed', 'error');
+        hideLoading();
+        return;
+      }
+      
+      console.log('Got authorization code');
+      
+      // 交換 code 獲取訪問令牌
+      try {
+        const exchangeEndpoint = 'https://corsproxy.io/?https://github.com/login/oauth/access_token';
+        
+        const exchangeResponse = await fetch(exchangeEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            code: code
+          })
+        });
+        
+        const tokenData = await exchangeResponse.json();
+        
+        if (!tokenData.access_token) {
+          console.error('Failed to exchange code for token:', tokenData);
+          showMessage('Failed to complete authentication', 'error');
+          hideLoading();
+          return;
+        }
+        
+        // Use the initialization function
+        await initializeAfterLogin(tokenData.access_token);
+        hideLoading();
+        
+      } catch (exchangeError) {
+        console.error('Error exchanging code for token:', exchangeError);
+        showMessage('Failed to complete authentication', 'error');
+        hideLoading();
+      }
+    });
+  } catch (error) {
+    console.error('GitHub login error:', error);
+    showMessage('Authentication failed', 'error');
+    hideLoading();
   }
 } 

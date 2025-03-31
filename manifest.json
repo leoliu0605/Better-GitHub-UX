@@ -5,7 +5,8 @@
   "description": "A Chrome extension to enhance GitHub user experience with repositories and stars management",
   "permissions": [
     "identity",
-    "storage"
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "https://api.github.com/*",
@@ -24,6 +25,16 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["content-script.js"]
+    }
+  ],
   "web_accessible_resources": [{
     "resources": ["config.js"],
     "matches": ["<all_urls>"]
